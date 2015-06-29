@@ -229,7 +229,7 @@ var Controller = function( agol, BaseController ){
 
           agol.files.exists( path, fileName, function( exists, path ) {
             if ( exists ){ 
-              controller.returnFile(req, res, dir, key, path, name);
+              controller.returnFile(req, res, path, name);
             } else {
               _returnProcessing();
             }
@@ -320,7 +320,7 @@ var Controller = function( agol, BaseController ){
                               });
                             } else {
                               // else serve it
-                              controller.returnFile(req, res, dir, key, path, name);
+                              controller.returnFile(req, res, path, name);
                             }
                           });
 
@@ -336,7 +336,7 @@ var Controller = function( agol, BaseController ){
                             });
                           } else {
                             // else serve it
-                            controller.returnFile(req, res, dir, key, path, name);
+                            controller.returnFile(req, res, path, name);
                           }
                         }
                       } else {
@@ -345,7 +345,7 @@ var Controller = function( agol, BaseController ){
                           // else proceed 
                         req.query.format = req.params.format;
                         _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
-                          controller.requestNewFile( req, res, dir, key, err, itemJson );
+                          controller.requestNewFile( req, res, dir, err, itemJson );
                         });
                       }
                     //});
@@ -524,7 +524,7 @@ var Controller = function( agol, BaseController ){
 
   };
 
-  controller.returnFile = function( req, res, dir, key, path, name ){
+  controller.returnFile = function( req, res, path, name ){
     if ( req.query.url_only ){
       var origUrl = req.originalUrl.split('?');
       origUrl[0] = origUrl[0].replace(/json/,req.params.format);
@@ -533,14 +533,20 @@ var Controller = function( agol, BaseController ){
     } else {
       // forces browsers to download 
       res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+req.params.format));
-      if (req.params.format === 'json' || req.params.format === 'geojson'){
-        res.contentType('application/json');
-      } else if (req.params.format === 'kml'){
-        res.contentType('application/vnd.google-earth.kml+xml');
-      } else if ( req.params.format === 'csv'){
-        res.contentType('text/csv');
-      } else if ( req.params.format === 'zip'){
-        res.contentType('application/octet-stream');
+      switch (req.params.format) {
+        case 'json': 
+        case 'geojson': 
+          res.contentType('application/json');
+          break;
+        case 'kml':
+          res.contentType('application/vnd.google-earth.kml+xml');
+          break;            
+        case 'csv':       
+          res.contentType('text/csv');
+          break;
+        case 'zip':
+          res.contentType('application/octet-stream');
+          break;
       }
 
       if (path.substr(0,4) === 'http'){
