@@ -158,6 +158,14 @@ function makeRequest(job, done){
         });
       });
 
+      req.setTimeout(30000, function(){
+        console.log('TIMEOUT');
+        //req.abort();
+        done('Page request timed out');
+        requestQ.kill();
+        //catchErrors(task, 'Request timed out', uri, cb);
+      });
+
       // we need this error catch to handle ECONNRESET
       req.on('error', function(err){
         catchErrors(task, err, uri, cb);
@@ -170,54 +178,60 @@ function makeRequest(job, done){
   };
 
   var processJSON = function(json, task, uri, job, cb){
-    
-    if ( json.error ){
-      catchErrors(task, JSON.stringify(json.error), uri, cb);
-    } else {
-      // insert a partial
-      koop.GeoJSON.fromEsri( job.data.fields || [], json, function(err, geojson){
-        koop.Cache.insertPartial( 'agol', id, geojson, layerId, function( err, success){
-          // when we gets errors on insert the whole job needs to stop
-          // most often this error means the cache was dropped
-          if (err) {
-            done(err);
-            requestQ.tasks = [];
-            requestQ.kill();
-          }
-          completed++;
-          console.log(completed, len, id);
-          job.progress( completed, len );
+    try {
+      if ( json.error ){
+        catchErrors(task, JSON.stringify(json.error), uri, cb);
+      } else {
+        // insert a partial
+        koop.GeoJSON.fromEsri( job.data.fields || [], json, function(err, geojson){
+          koop.Cache.insertPartial( 'agol', id, geojson, layerId, function( err, success){
+            // when we gets errors on insert the whole job needs to stop
+            // most often this error means the cache was dropped
+            if (err) {
+              done(err);
+              requestQ.tasks = [];
+              requestQ.kill();
+            }
+            completed++;
+            console.log(completed, len, id);
+            job.progress( completed, len );
 
-          // clean up our big vars            
-          json = null;
-          geojson = null;
-          response = null;
-          data = null;
+            // clean up our big vars            
+            json = null;
+            geojson = null;
+            response = null;
+            data = null;
 
-          if ( completed == len ) {
-            var key = [ 'agol', id, layerId ].join(':');
-            koop.Cache.getInfo(key, function(err, info){
-              if (err){
-                koop.log.error(err);
-                return done(err);
-              }
-              if ( info && info.status ) {
-                delete info.status;
-              }
-              koop.Cache.updateInfo(key, info, function(err, info){
-                done();
-                process.nextTick(cb);
+            if ( completed == len ) {
+              var key = [ 'agol', id, layerId ].join(':');
+              koop.Cache.getInfo(key, function(err, info){
+                if (err){
+                  koop.log.error(err);
+                  return done(err);
+                }
+                if ( info && info.status ) {
+                  delete info.status;
+                }
+                koop.Cache.updateInfo(key, info, function(err, info){
+                  done();
+                  process.nextTick(cb);
+                  return;
+                });
                 return;
               });
+            } else {
+              process.nextTick(cb);
               return;
-            });
-          } else {
-            process.nextTick(cb);
-            return;
-          }
+            }
 
+          });
         });
-      });
+      }
+    } catch (e){
+      koop.log.error('Could not processJSON %s', e);
+      done(e);
+      requestQ.tasks = [];
+      requestQ.kill();
     }
   };
 

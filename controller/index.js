@@ -134,7 +134,7 @@ var Controller = function( agol, BaseController ){
             if (error) {
               callback( error, null);
             // if we have status return right away
-            } else if (itemJson.koop_status == 'processing' && typeof req.params.silent === 'undefined') {
+            } else if (itemJson.koop_status === 'processing' && typeof req.params.silent === 'undefined') {
               // return w/202
               agol.getCount(['agol', item, options.layer].join(':'), {}, function(err, count) {
                 var code = 202;
@@ -165,11 +165,12 @@ var Controller = function( agol, BaseController ){
     // else move on
     var table_key = ['agol', req.params.item, (req.params.layer || 0)].join(':');
     agol.getInfo(table_key, function(err, info){
+      var dir, key, path, fileName;
 
       // sort the req.query before we hash so we are consistent 
       var sorted_query = {};
       _(req.query).keys().sort().each(function (key) {
-        if (key != 'url_only' && key != 'format'){
+        if (key !== 'url_only' && key !== 'format'){
           sorted_query[key] = req.query[key];
         }
       });
@@ -179,7 +180,7 @@ var Controller = function( agol, BaseController ){
 
       // build the file key as an MD5 hash that's a join on the paams and look for the file 
       var toHash = req.params.item + '_' + ( req.params.layer || 0 ) + JSON.stringify( sorted_query );
-      var key = crypto.createHash('md5').update(toHash).digest('hex');
+      key = crypto.createHash('md5').update(toHash).digest('hex');
 
       var _returnProcessing = function( ){
         if (typeof req.params.silent === 'undefined') {
@@ -208,7 +209,7 @@ var Controller = function( agol, BaseController ){
         }
       };
 
-      if (info && info.status == 'processing'){
+      if (info && info.status === 'processing'){
         if ( req.params.format ) {
 
           // force an override on the format param if given a format in the query
@@ -219,14 +220,11 @@ var Controller = function( agol, BaseController ){
 
           // this logic should be wrapped into a Function since its copied from below
           req.params.format = req.params.format.replace('geojson', 'json');
-          var dir = req.params.item + '_' + ( req.params.layer || 0 );
-          var path = ['files', dir, key].join('/');
+          dir = req.params.item + '_' + ( req.params.layer || 0 );
+          path = ['files', dir, key].join('/');
 
           // get the name of the data; else use the key (md5 hash)
-          var name = ( info && info.info ) ? info.info.name || info.info.title || info.name : key;
-          name = (name.length > 150) ? name.substr(0, 150): name;
-          var fileName = name + '.' + req.params.format;
-          fileName = fileName.replace(/\/|,|&|\|/g, '').replace(/ /g, '_').replace(/\(|\)/g, '');
+          fileName = controller.createName(info, key, req.params.format);
 
           // if we have a layer then append it to the query params 
           if ( req.params.layer ) {
@@ -255,20 +253,18 @@ var Controller = function( agol, BaseController ){
           }
 
           // redirect to thumbnail for png access
-          if (req.params.format == 'png'){
+          if (req.params.format === 'png'){
             controller.thumbnail(req, res);
           } else {
 
             // change geojson to json
             req.params.format = req.params.format.replace('geojson', 'json');
             // use the item as the file dir so we can organize exports by id
-            var dir = req.params.item + '_' + ( req.params.layer || 0 );
-            var path = [ 'files', dir, key ].join( '/' );
+            dir = req.params.item + '_' + ( req.params.layer || 0 );
+            path = [ 'files', dir, key ].join( '/' );
+            
             // the file name for the export 
-            var name = ( info && info.info ) ? info.name || info.info.name || info.info.title : key;
-            name = (name.length > 150) ? name.substr(0, 150): name;
-            var fileName = name + '.' + req.params.format;
-            fileName = fileName.replace(/\/|,|&|\|/g, '').replace(/ /g, '_').replace(/\(|\)/g, '');
+            fileName = controller.createName(info, key, req.params.format);
 
             // if we have a layer then append it to the query params 
             if ( req.params.layer ) {
@@ -391,6 +387,14 @@ var Controller = function( agol, BaseController ){
     });
   };
 
+  controller.createName = function (info, key, format) {
+    var name = ( info && info.info ) ? info.name || info.info.name || info.info.title : key;
+    name = (name.length > 150) ? name.substr(0, 150): name;
+    var fileName = name + '.' + req.params.format;
+    fileName = fileName.replace(/\/|,|&|\|/g, '').replace(/ /g, '_').replace(/\(|\)/g, '');
+    return fileName;
+  };
+
   controller.requestNewFile = function( req, res, dir, key, err, itemJson ){
     if (err){
       if ( err.code && err.error ){
@@ -430,7 +434,7 @@ var Controller = function( agol, BaseController ){
 
       }
 
-      if ((itemJson.koop_status && itemJson.koop_status == 'too big') || agol.forceExportWorker ){
+      if ((itemJson.koop_status && itemJson.koop_status === 'too big') || agol.forceExportWorker ){
         // export as a series of small queries/files
         var table = 'agol:' + req.params.item + ':' + ( req.params.layer || 0 );
 
@@ -440,7 +444,7 @@ var Controller = function( agol, BaseController ){
           req.query.geomType = itemJson.data[0].info.geometryType;
         }
         agol.exportLarge( req.params.format, req.params.item, key, 'agol', req.query, function(err, result){
-          if (result && result.status && result.status == 'processing'){
+          if (result && result.status && result.status === 'processing'){
             agol.getCount(table, {}, function(err, count){
               var code = 202;
               var response = {
@@ -466,7 +470,7 @@ var Controller = function( agol, BaseController ){
             if (err) {
               res.status(err.code || 400).send( err );
             } else {
-              if (req.params.format == 'json' || req.params.format == 'geojson'){
+              if (req.params.format === 'json' || req.params.format === 'geojson'){
                 res.contentType('text');
               } 
               res.sendfile(result);
@@ -497,17 +501,17 @@ var Controller = function( agol, BaseController ){
               res.status(err.code || 400).send( err );
             } else {
               res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+req.params.format));
-              if (req.params.format == 'json' || req.params.format == 'geojson'){
+              if (req.params.format === 'json' || req.params.format === 'geojson'){
                 res.contentType('application/json');
-              } else if (req.params.format == 'kml'){
+              } else if (req.params.format === 'kml'){
                 res.contentType('application/vnd.google-earth.kml+xml');
-              } else if ( req.params.format == 'csv'){
+              } else if ( req.params.format === 'csv'){
                 res.contentType('text/csv');
-              } else if ( req.params.format == 'zip'){
+              } else if ( req.params.format === 'zip'){
                 res.contentType('application/octet-stream');
               }
 
-              if ( result.substr(0,4) == 'http' ){
+              if ( result.substr(0,4) === 'http' ){
                 // Proxy to s3 urls allows us to not show the URL 
                 https.get(result, function(proxyRes) {
                   proxyRes.pipe(res);
@@ -534,17 +538,17 @@ var Controller = function( agol, BaseController ){
     } else {
       // forces browsers to download 
       res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+req.params.format));
-      if (req.params.format == 'json' || req.params.format == 'geojson'){
+      if (req.params.format === 'json' || req.params.format === 'geojson'){
         res.contentType('application/json');
-      } else if (req.params.format == 'kml'){
+      } else if (req.params.format === 'kml'){
         res.contentType('application/vnd.google-earth.kml+xml');
-      } else if ( req.params.format == 'csv'){
+      } else if ( req.params.format === 'csv'){
         res.contentType('text/csv');
-      } else if ( req.params.format == 'zip'){
+      } else if ( req.params.format === 'zip'){
         res.contentType('application/octet-stream');
       }
 
-      if (path.substr(0,4) == 'http'){
+      if (path.substr(0,4) === 'http'){
         // Proxy to s3 urls allows us to not show the URL 
         https.get(path, function(proxyRes) {
           proxyRes.pipe(res);
@@ -583,7 +587,7 @@ var Controller = function( agol, BaseController ){
         // sort the req.query before we hash so we are consistent 
         var sorted_query = {};
         _(req.query).keys().sort().each(function (key) {
-          if (key != 'url_only' && key != 'format'){
+          if (key !== 'url_only' && key !== 'format'){
             sorted_query[key] = req.query[key];
           }
         });
@@ -642,7 +646,7 @@ var Controller = function( agol, BaseController ){
             // sort the req.query before we hash so we are consistent 
             var sorted_query = {};
             _(req.query).keys().sort().each(function (key) {
-              if (key != 'url_only' && key != 'format'){
+              if (key !== 'url_only' && key !== 'format'){
                 sorted_query[key] = req.query[key];
               }
             });
@@ -713,10 +717,10 @@ var Controller = function( agol, BaseController ){
           return res.status(err.code || 500).send( err.message || 'Unknown error while creating the tile' );
         }
 
-        if (req.params.format == 'pbf') {
+        if (req.params.format === 'pbf') {
           res.setHeader('content-encoding', 'deflate');
         }
-        if ( req.params.format == 'png' || req.params.format == 'pbf'){
+        if ( req.params.format === 'png' || req.params.format === 'pbf'){
           res.sendfile( tile );
         } else {
           if ( callback ){
@@ -739,10 +743,10 @@ var Controller = function( agol, BaseController ){
     };
 
     var _sendImmediate = function( file ){
-      if (req.params.format == 'pbf') {
+      if (req.params.format === 'pbf') {
         res.setHeader('content-encoding', 'deflate');
       }
-      if ( req.params.format == 'png' || req.params.format == 'pbf'){
+      if ( req.params.format === 'png' || req.params.format === 'pbf'){
         res.sendfile( file );
       } else {
         if ( callback ){
@@ -777,7 +781,7 @@ var Controller = function( agol, BaseController ){
           // sort the req.query before we hash so we are consistent 
           var sorted_query = {};
           _(req.query).keys().sort().each(function (key) {
-            if (key != 'url_only' && key != 'format'){
+            if (key !== 'url_only' && key !== 'format'){
               sorted_query[key] = req.query[key];
             }
           });
@@ -785,7 +789,7 @@ var Controller = function( agol, BaseController ){
           var toHash = req.params.item + '_' + ( req.params.layer || 0 ) + JSON.stringify( sorted_query );
           var hash = crypto.createHash('md5').update(toHash).digest('hex');
 
-          var factor = .1;
+          var factor = 0.1;
           req.query.simplify = ( ( Math.abs( req.query.geometry.xmin - req.query.geometry.xmax ) ) / 256) * factor; 
 
           // make sure we ignore the query limit of 2k
@@ -794,7 +798,7 @@ var Controller = function( agol, BaseController ){
           // Get the item
           agol.getItemData( data.host, req.params.id, req.params.item, hash, req.query, function(error, itemJson){
             if (error) {
-              if ( itemJson && itemJson.type == 'Image Service' && req.params.format == 'png' ){
+              if ( itemJson && itemJson.type === 'Image Service' && req.params.format === 'png' ){
                 agol.getImageServiceTile( req.params, function(err, newFile){
                   _sendImmediate( newFile );
                 });
@@ -875,7 +879,7 @@ var Controller = function( agol, BaseController ){
           // sort the req.query before we hash so we are consistent 
           var sorted_query = {};
           _(req.query).keys().sort().each(function (key) {
-            if (key != 'url_only' && key != 'format'){
+            if (key !== 'url_only' && key !== 'format'){
               sorted_query[key] = req.query[key];
             }
           });
