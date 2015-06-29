@@ -1,7 +1,4 @@
-var request = require('request'),
-  https = require('https'),
-  terraformer = require('terraformer'),
-  terraformerParser = require('terraformer-arcgis-parser'),
+var https = require('https'),
   sm = require('sphericalmercator'),
   merc = new sm({size:256}),
   crypto = require('crypto'),
@@ -118,7 +115,6 @@ var Controller = function( agol, BaseController ){
 
   // find the items data 
   controller.findItemData = function(req, res){
-    var self = this;
     // closure that actually goes out gets the data
     var _get = function(id, item, key, options, callback){
        agol.find( id, function( err, data ){
@@ -316,7 +312,7 @@ var Controller = function( agol, BaseController ){
                             // return it.
                             // if expired -> remove the data and request
                             if ( is_expired ){
-                              agol.dropItem( data.host, req.params.item, req.query, function( err, success ){
+                              agol.dropItem( data.host, req.params.item, req.query, function () {
                                 req.query.format = req.params.format;
                                 _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
                                   controller.requestNewFile( req, res, dir, key, err, itemJson );
@@ -332,8 +328,7 @@ var Controller = function( agol, BaseController ){
 
                           // if expired -> remove the data and request
                           if ( is_expired ){
-                            var d = [dir, key ].join( '/' );
-                            agol.dropItem( '', req.params.item, req.query, function( err, success ){
+                            agol.dropItem( '', req.params.item, req.query, function () {
                               req.query.format = req.params.format;
                               _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
                                 controller.requestNewFile( req, res, dir, key, err, itemJson );
@@ -390,7 +385,7 @@ var Controller = function( agol, BaseController ){
   controller.createName = function (info, key, format) {
     var name = ( info && info.info ) ? info.name || info.info.name || info.info.title : key;
     name = (name.length > 150) ? name.substr(0, 150): name;
-    var fileName = name + '.' + req.params.format;
+    var fileName = name + '.' + format;
     fileName = fileName.replace(/\/|,|&|\|/g, '').replace(/ /g, '_').replace(/\(|\)/g, '');
     return fileName;
   };
@@ -566,7 +561,6 @@ var Controller = function( agol, BaseController ){
       return;
     }
 
-    var self = this;
     var callback = req.query.callback;
     delete req.query.callback;
 
@@ -824,12 +818,7 @@ var Controller = function( agol, BaseController ){
       req.params.format = 'png';
     }
 
-    // save the callback to append to the response when ready
-    var callback = req.query.callback;
-    delete req.query.callback;
-
-    var key,
-      layer = req.params.layer || 0;
+    var key;
 
     // if no format given default to png 
     if ( !req.params.format ){
@@ -919,10 +908,6 @@ var Controller = function( agol, BaseController ){
    *
    */
   controller.getGeohash = function(req, res){
-    // remove but save the callback params for jsonp requests
-    var callback = req.query.callback;
-    delete req.query.callback;
-
     // used for asking if we have the data already
     var table_key = ['agol', req.params.item, (req.params.layer || 0)].join(':');
 
