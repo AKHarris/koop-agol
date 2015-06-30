@@ -327,7 +327,7 @@ var Controller = function( agol, BaseController ){
                                     key: key,
                                     err: err,
                                     itemJson: itemJson
-                                  }
+                                  };
                                   controller.requestNewFile(fileParams);
                                 });
                               });
@@ -352,7 +352,7 @@ var Controller = function( agol, BaseController ){
                                   key: key,
                                   err: err,
                                   itemJson: itemJson
-                                }
+                                };
                                 controller.requestNewFile(fileParams);
                               });
                             });
@@ -375,7 +375,7 @@ var Controller = function( agol, BaseController ){
                             key: key,
                             err: err, 
                             itemJson: itemJson
-                          }
+                          };
                           controller.requestNewFile(fileParams);
                         });
                       }
@@ -610,8 +610,8 @@ var Controller = function( agol, BaseController ){
 
     // support POST requests; map body vals to the query 
     // (then all same as GET)
-    if (req.body) {
-      for (var k in req.body) {
+    for (var k in req.body) {
+      if (req.body[k]) {
         req.query[k] = req.body[k];
       }
     }
