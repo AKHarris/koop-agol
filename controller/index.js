@@ -7,9 +7,7 @@ var https = require('https'),
 
 // inherit from base controller
 var Controller = function( agol, BaseController ){
-
-  var controller = {};
-  controller.__proto__ = BaseController( );
+  var controller = new BaseController( );
 
   // Registers a host with the given id 
   // this inserts a record into the db for an ArcGIS instances ie: id -> hostname :: arcgis -> arcgis.com 
@@ -116,7 +114,11 @@ var Controller = function( agol, BaseController ){
   // find the items data 
   controller.findItemData = function(req, res){
     // closure that actually goes out gets the data
-    var _get = function(id, item, key, options, callback){
+    var _get = function(params, options, callback){
+      var id = params.id,
+        item = params.item,
+        key = params.key;
+
        agol.find( id, function( err, data ){
         if (err) {
           callback(err, null);
@@ -163,6 +165,7 @@ var Controller = function( agol, BaseController ){
     agol.getInfo(table_key, function(err, info){
       var dir, key, path, fileName;
 
+
       // sort the req.query before we hash so we are consistent 
       var sorted_query = {};
       _(req.query).keys().sort().each(function (key) {
@@ -177,6 +180,7 @@ var Controller = function( agol, BaseController ){
       // build the file key as an MD5 hash that's a join on the paams and look for the file 
       var toHash = req.params.item + '_' + ( req.params.layer || 0 ) + JSON.stringify( sorted_query );
       key = crypto.createHash('md5').update(toHash).digest('hex');
+      req.params.key = key;
 
       var _returnProcessing = function( ){
         if (typeof req.params.silent === 'undefined') {
@@ -314,8 +318,17 @@ var Controller = function( agol, BaseController ){
                             if ( is_expired ){
                               agol.dropItem( data.host, req.params.item, req.query, function () {
                                 req.query.format = req.params.format;
-                                _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
-                                  controller.requestNewFile( req, res, dir, key, err, itemJson );
+                                _get(req.params, req.query, function( err, itemJson ){
+                                  // var used to request new files if needed. 
+                                  var fileParams = {
+                                    req: req,
+                                    res: res,
+                                    dir: dir,
+                                    key: key,
+                                    err: err,
+                                    itemJson: itemJson
+                                  }
+                                  controller.requestNewFile(fileParams);
                                 });
                               });
                             } else {
@@ -330,8 +343,17 @@ var Controller = function( agol, BaseController ){
                           if ( is_expired ){
                             agol.dropItem( '', req.params.item, req.query, function () {
                               req.query.format = req.params.format;
-                              _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
-                                controller.requestNewFile( req, res, dir, key, err, itemJson );
+                              _get(req.params, req.query, function( err, itemJson ){
+                                // var used to request new files if needed. 
+                                var fileParams = {
+                                  req: req,
+                                  res: res,
+                                  dir: dir,
+                                  key: key,
+                                  err: err,
+                                  itemJson: itemJson
+                                }
+                                controller.requestNewFile(fileParams);
                               });
                             });
                           } else {
@@ -344,8 +366,17 @@ var Controller = function( agol, BaseController ){
                           // if we do then return 
                           // else proceed 
                         req.query.format = req.params.format;
-                        _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
-                          controller.requestNewFile( req, res, dir, err, itemJson );
+                        _get(req.params, req.query, function( err, itemJson ){
+                          // var used to request new files if needed. 
+                          var fileParams = {
+                            req: req,
+                            res: res, 
+                            dir: dir, 
+                            key: key,
+                            err: err, 
+                            itemJson: itemJson
+                          }
+                          controller.requestNewFile(fileParams);
                         });
                       }
                     //});
@@ -360,7 +391,7 @@ var Controller = function( agol, BaseController ){
             req.query.layer = req.params.layer;
           }
           // get the esri json data for the service
-          _get(req.params.id, req.params.item, key, req.query, function( err, itemJson ){
+          _get(req.params, req.query, function( err, itemJson ){
               // when silent is sent as a param undefined
               if (typeof req.params.silent === 'undefined') {
                 if (err) {
@@ -390,12 +421,19 @@ var Controller = function( agol, BaseController ){
     return fileName;
   };
 
-  controller.requestNewFile = function( req, res, dir, key, err, itemJson ){
-    if (err){
-      if ( err.code && err.error ){
-        res.status(err.code).send( err.error );
+  controller.requestNewFile = function (params) { //req, res, dir, key, err, itemJson ){
+    var err = params.err,
+      itemJson = params.itemJson,
+      req = params.req,
+      res = params.res,
+      dir = params.dir,
+      key = params.key;
+
+    if (err) {
+      if (err.code && err.error) {
+        res.status(err.code).send(err.error);
       } else {
-        res.status(400).send( err );
+        res.status(400).send(err);
       }
     } 
     else if ( itemJson && itemJson.data && itemJson.data[0] && (!itemJson.data[0].features || !itemJson.data[0].features.length)) {
@@ -422,14 +460,13 @@ var Controller = function( agol, BaseController ){
         var wkid = parseInt(itemJson.data[0].info.extent.spatialReference.latestWkid);
         if ( wkid && ([3785, 3857, 4326, 102100].indexOf(wkid) === -1) && !req.query.wkid){
           req.query.wkid = wkid;
-        } 
-        else if ( itemJson.data[0].info.extent.spatialReference.wkt && !req.query.wkid){
+        } else if ( itemJson.data[0].info.extent.spatialReference.wkt && !req.query.wkid){
           req.query.wkt = itemJson.data[0].info.extent.spatialReference.wkt;
         } 
 
       }
 
-      if ((itemJson.koop_status && itemJson.koop_status === 'too big') || agol.forceExportWorker ){
+      if ((itemJson.koop_status && itemJson.koop_status === 'too big') || agol.forceExportWorker) {
         // export as a series of small queries/files
         var table = 'agol:' + req.params.item + ':' + ( req.params.layer || 0 );
 
@@ -495,16 +532,7 @@ var Controller = function( agol, BaseController ){
             if (err) {
               res.status(err.code || 400).send( err );
             } else {
-              res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+req.params.format));
-              if (req.params.format === 'json' || req.params.format === 'geojson'){
-                res.contentType('application/json');
-              } else if (req.params.format === 'kml'){
-                res.contentType('application/vnd.google-earth.kml+xml');
-              } else if ( req.params.format === 'csv'){
-                res.contentType('text/csv');
-              } else if ( req.params.format === 'zip'){
-                res.contentType('application/octet-stream');
-              }
+              res = controller._setHeaders(res, name, req.params.format);
 
               if ( result.substr(0,4) === 'http' ){
                 // Proxy to s3 urls allows us to not show the URL 
@@ -525,30 +553,20 @@ var Controller = function( agol, BaseController ){
   };
 
   controller.returnFile = function( req, res, path, name ){
+    var format = req.params.format;
     if ( req.query.url_only ){
       var origUrl = req.originalUrl.split('?');
-      origUrl[0] = origUrl[0].replace(/json/,req.params.format);
-      var newUrl = req.protocol +'://'+req.get('host') + origUrl[0] + '?' + origUrl[1].replace(/url_only=true&|url_only=true|/,'').replace('format='+req.params.format,'').replace('&format='+req.params.format,'');
+      origUrl[0] = origUrl[0].replace(/json/, format);
+      var newUrl = req.protocol + '://' + req.get('host') + origUrl[0] + '?';
+        newUrl += origUrl[1]
+          .replace(/url_only=true&|url_only=true|/,'')
+          .replace('format=' + format,'')
+          .replace('&format=' + format,'');
+
       res.json({url: newUrl});
     } else {
-      // forces browsers to download 
-      res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+req.params.format));
-      switch (req.params.format) {
-        case 'json': 
-        case 'geojson': 
-          res.contentType('application/json');
-          break;
-        case 'kml':
-          res.contentType('application/vnd.google-earth.kml+xml');
-          break;            
-        case 'csv':       
-          res.contentType('text/csv');
-          break;
-        case 'zip':
-          res.contentType('application/octet-stream');
-          break;
-      }
-
+      // forces browsers to download
+      res = controller._setHeaders(res, name, format);
       if (path.substr(0,4) === 'http'){
         // Proxy to s3 urls allows us to not show the URL 
         https.get(path, function(proxyRes) {
@@ -558,6 +576,26 @@ var Controller = function( agol, BaseController ){
         res.sendfile( path );
       }
     }
+  };
+
+  controller._setHeaders = function (res, name, format) {
+    res.setHeader('Content-disposition', 'attachment; filename='+(encodeURIComponent(name)+'.'+format));
+    switch (format) {
+      case 'json':
+      case 'geojson':
+        res.contentType('application/json');
+        break;
+      case 'kml':
+        res.contentType('application/vnd.google-earth.kml+xml');
+        break;
+      case 'csv':
+        res.contentType('text/csv');
+        break;
+      case 'zip':
+        res.contentType('application/octet-stream');
+        break;
+    }
+    return res;
   };
 
   controller.featureserver = function( req, res ){
@@ -572,15 +610,17 @@ var Controller = function( agol, BaseController ){
 
     // support POST requests; map body vals to the query 
     // (then all same as GET)
-    for (var k in req.body){
-      req.query[k] = req.body[k];
+    if (req.body) {
+      for (var k in req.body) {
+        req.query[k] = req.body[k];
+      }
     }
 
-    if (!req.params.layer){
+    if (!req.params.layer) {
       req.query.layer = 0;
     }
 
-    agol.find(req.params.id, function(err, data){
+    agol.find(req.params.id, function (err, data) {
       if (err) {
         res.status(404).send( err );
       } else {
@@ -620,15 +660,17 @@ var Controller = function( agol, BaseController ){
 
 
   controller.thumbnail = function(req, res){
-     agol.find(req.params.id, function(err, data){
+    var key, dir, layer;
+
+    agol.find(req.params.id, function(err, data){
       if (err) {
         res.status(404).send( err );
       } else {
-        var layer = (req.params.layer || 0);
+        layer = (req.params.layer || 0);
 
         // check the image first and return if exists
-        var key = ['agol', req.params.id, req.params.item, layer].join(':');
-        var dir = '/thumbs';
+        key = ['agol', req.params.id, req.params.item, layer].join(':');
+        dir = '/thumbs';
         req.query.width = parseInt( req.query.width ) || 150;
         req.query.height = parseInt( req.query.height ) || 150;
         req.query.f_base = dir + '/' + req.params.item +'_'+ layer +'/'+ req.params.item +'::' + req.query.width + '::' + req.query.height;
@@ -818,12 +860,7 @@ var Controller = function( agol, BaseController ){
   },
 
   // logic for handling service level, multi-layer tiles 
-  controller.servicetiles = function(req, res){
-
-    if ( !req.params.format){
-      req.params.format = 'png';
-    }
-
+  controller.servicetiles = function (req, res) {
     var key;
 
     // if no format given default to png 
@@ -855,7 +892,8 @@ var Controller = function( agol, BaseController ){
     };
 
     // file key tells is a combo key for standardizing look ups in the fs.system 
-    var key = [req.params.item,'all'].join(':');
+    key = [req.params.item,'all'].join(':');
+
     // build the names of the files 
     // Note that the layer id would be present in service level tiles 
     var file = agol.files.localDir + '/tiles/';
@@ -865,8 +903,8 @@ var Controller = function( agol, BaseController ){
     // if the json file alreadty exists, dont hit the db, just send the data
     if ( fs.existsSync( file ) ){
       res.sendfile( file );
-    } else  {
-      agol.find( req.params.id, function( err, data ){
+    } else {
+      agol.find( req.params.id, function (err, data) {
         if (err) {
           res.status(500).send( err );
         } else {
@@ -890,7 +928,6 @@ var Controller = function( agol, BaseController ){
         }
       });
     }
-
   };
 
   // drops the cache for an item and DELETEs all known files
